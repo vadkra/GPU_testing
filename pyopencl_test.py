@@ -2,6 +2,8 @@ import numpy
 import pyopencl as cl
 import time
 
+TASK = 64
+
 if __name__ == '__main__':
 
     print('load program from cl source file')
