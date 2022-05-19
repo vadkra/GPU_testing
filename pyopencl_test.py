@@ -1,35 +1,43 @@
-#!/usr/bin/env python
-
-import numpy as np
+import numpy
 import pyopencl as cl
+import time
 
-a_np = np.random.rand(50000).astype(np.float32)
-b_np = np.random.rand(50000).astype(np.float32)
+if __name__ == '__main__':
 
-ctx = cl.create_some_context()
-queue = cl.CommandQueue(ctx)
+    print('load program from cl source file')
+    f = open('hello_world.cl', 'r', encoding='utf-8')
+    kernels = ''.join(f.readlines())
+    f.close()
 
-mf = cl.mem_flags
-a_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=a_np)
-b_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=b_np)
+    print('prepare data ... ')
+    start_time = time.time()
+    matrix = numpy.random.randint(low=1, high=101, dtype=numpy.int32, size=TASKS)
+    time_hostdata_loaded = time.time()
 
-prg = cl.Program(ctx, """
-__kernel void sum(
-    __global const float *a_g, __global const float *b_g, __global float *res_g)
-{
-  int gid = get_global_id(0);
-  res_g[gid] = a_g[gid] + b_g[gid];
-}
-""").build()
+    print('create context')
+    ctx = cl.create_some_context()
+    print('create command queue')
+    queue = cl.CommandQueue(ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
+    time_ctx_queue_creation = time.time()
 
-res_g = cl.Buffer(ctx, mf.WRITE_ONLY, a_np.nbytes)
-knl = prg.sum  # Use this Kernel object for repeated calls
-knl(queue, a_np.shape, None, a_g, b_g, res_g)
+    # prepare device memory for OpenCL
+    print('prepare device memory for input / output')
+    dev_matrix = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=matrix)
+    time_devicedata_loaded = time.time()
 
-res_np = np.empty_like(a_np)
-cl.enqueue_copy(queue, res_np, res_g)
+    print('compile kernel code')
+    prg = cl.Program(ctx, kernels).build()
+    time_kernel_compilation = time.time()
 
-# Check on CPU with Numpy:
-print(res_np - (a_np + b_np))
-print(np.linalg.norm(res_np - (a_np + b_np)))
-assert np.allclose(res_np, a_np + b_np)
+    print('execute kernel programs')
+    evt = prg.hello_world(queue, (TASKS, ), (1, ), dev_matrix)
+    print('wait for kernel executions')
+    evt.wait()
+    elapsed = 1e-9 * (evt.profile.end - evt.profile.start)
+    print('done')
+
+    print('Prepare host data took       : {}'.format(time_hostdata_loaded - start_time))
+    print('Create CTX/QUEUE took        : {}'.format(time_ctx_queue_creation - time_hostdata_loaded))
+    print('Upload data to device took   : {}'.format(time_devicedata_loaded - time_ctx_queue_creation))
+    print('Compile kernel took          : {}'.format(time_kernel_compilation - time_devicedata_loaded))
+    print('OpenCL elapsed time          : {}'.format(elapsed))
