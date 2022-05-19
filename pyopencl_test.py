@@ -2,7 +2,7 @@ import numpy
 import pyopencl as cl
 import time
 
-TASK = 64
+TASKS = 64
 
 if __name__ == '__main__':
 
